@@ -1,0 +1,87 @@
+-- Livboj — enkel meny för backup och återställning, utan Terminal.
+-- MALL: platshållarna {{...}} fylls i av scripts/bygg-app.mjs, som sedan
+-- kompilerar resultatet till /Applications/Livboj.app. Redigera mallen,
+-- inte den genererade filen.
+
+property volymen : "{{VOLYM}}"
+property resticKmd : "export RESTIC_REPOSITORY='{{ARKIV}}'; export RESTIC_PASSWORD_COMMAND='/usr/bin/security find-generic-password -s {{NYCKELRING}} -w'; '{{RESTIC}}' "
+
+on run
+	try
+		do shell script "test -d " & quoted form of volymen
+	on error
+		display dialog "Koppla in backupdisken (" & volymen & ") först och försök igen." buttons {"OK"} default button "OK" with icon caution with title "Livboj"
+		return
+	end try
+
+	set menyn to {"Återställ filer …", "Se alla säkerhetskopior", "Kör backup nu", "Testa arkivet", "Öppna backupdisken", "Öppna instruktionen (LÄS MIG FÖRST)"}
+	set valet to choose from list menyn with prompt "Vad vill du göra?" default items {"Återställ filer …"} with title "Livboj"
+	if valet is false then return
+	set valet to item 1 of valet
+
+	if valet is "Återställ filer …" then
+		aterstall()
+	else if valet is "Se alla säkerhetskopior" then
+		visaSnapshots()
+	else if valet is "Kör backup nu" then
+		korBackup()
+	else if valet is "Testa arkivet" then
+		testaArkivet()
+	else if valet is "Öppna backupdisken" then
+		do shell script "open " & quoted form of volymen
+	else
+		do shell script "open -e " & quoted form of (volymen & "/LÄS-MIG-FÖRST.md")
+	end if
+end run
+
+on aterstall()
+	set tid to button returned of (display dialog "Från vilken tidpunkt vill du hämta filerna?" buttons {"Avbryt", "Välj äldre tidpunkt …", "Senaste"} default button "Senaste" with title "Livboj")
+	if tid is "Avbryt" then return
+	set snapId to "latest"
+	set snapText to "den senaste säkerhetskopian"
+	if tid is "Välj äldre tidpunkt …" then
+		set rader to paragraphs of (do shell script resticKmd & "snapshots --compact | grep -E '^[0-9a-f]{8}'")
+		set valdRad to choose from list rader with prompt "Välj säkerhetskopia (datum och tid):" with title "Livboj"
+		if valdRad is false then return
+		set snapText to item 1 of valdRad
+		set snapId to word 1 of snapText
+	end if
+
+	set vadLista to {{VAL_LISTA}}
+	set inklLista to {{INKL_LISTA}}
+	set vad to choose from list vadLista with prompt "Vad vill du hämta tillbaka?" with title "Livboj"
+	if vad is false then return
+	set vad to item 1 of vad
+	set inkl to "ALLT"
+	repeat with i from 1 to count of vadLista
+		if item i of vadLista is vad then set inkl to item i of inklLista
+	end repeat
+
+	display dialog "Hämtar: " & vad & return & "Från: " & snapText & return & return & "Filerna läggs i en ny mapp (Återställt …) i din hemmapp — inget skrivs över. När det är klart kommer en notis och mappen öppnas i Finder." buttons {"Avbryt", "Hämta"} default button "Hämta" with title "Livboj"
+	if button returned of result is "Avbryt" then return
+
+	do shell script "nohup '{{ROT}}/scripts/aterstall.sh' " & quoted form of snapId & " " & quoted form of inkl & " > /dev/null 2>&1 &"
+	display notification "Återställningen har startat i bakgrunden …" with title "Livboj"
+end aterstall
+
+on visaSnapshots()
+	display notification "Hämtar listan …" with title "Livboj"
+	set utfil to "/tmp/livboj-sakerhetskopior.txt"
+	do shell script resticKmd & "snapshots > " & quoted form of utfil & " 2>&1"
+	do shell script "open -e " & quoted form of utfil
+end visaSnapshots
+
+on korBackup()
+	do shell script "mkdir -p \"$HOME/.livboj\" && touch \"$HOME/.livboj/kor-nu\" && launchctl kickstart gui/$(id -u)/livboj.backup-disk"
+	display notification "Backupen kör i bakgrunden — en notis kommer när den är klar." with title "Livboj"
+end korBackup
+
+on testaArkivet()
+	display notification "Testar arkivet — tar en liten stund …" with title "Livboj"
+	try
+		set resultat to do shell script "'{{NODE}}' '{{ROT}}/scripts/testaterstallning.mjs' 2>&1"
+	on error felText
+		set resultat to "Testet misslyckades:" & return & felText
+	end try
+	display dialog resultat buttons {"OK"} default button "OK" with title "Livboj — arkivtest"
+end testaArkivet

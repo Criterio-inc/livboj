@@ -1,0 +1,12 @@
+# Din personliga uppsättning — hör hemma på din dator, aldrig på GitHub
+livboj.config.mjs
+manifest.mjs
+KUVERT-LOSENFRAS.txt
+
+# Genererat
+app/Livboj.applescript
+
+# Systemskräp
+.DS_Store
+*.log
+node_modules/

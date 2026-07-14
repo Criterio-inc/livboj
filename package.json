@@ -1,0 +1,18 @@
+{
+  "name": "livboj",
+  "version": "1.0.0",
+  "description": "Suverän backup på egen disk — kurerad, krypterad, ärvbar. Sovereign backup to your own drive.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Pär Levander",
+  "repository": "github:Criterio-inc/livboj",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "init": "node scripts/init.mjs",
+    "backup": "node scripts/livboj.mjs --force",
+    "test-arkivet": "node scripts/testaterstallning.mjs",
+    "bygg-app": "node scripts/bygg-app.mjs"
+  }
+}
