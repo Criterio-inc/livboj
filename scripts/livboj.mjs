@@ -219,6 +219,15 @@ const varningar = [];
 notis("Backup startad …", "Följ förloppet i Livboj-appen.");
 framsteg({ fas: "start" }, true);
 
+// En öppen arkivbläddrare (restic mount) håller ett lås som skulle stoppa
+// slutkontrollen — koppla från den snyggt innan körningen börjar.
+const montrader = spawnSync("/sbin/mount", [], { encoding: "utf8" }).stdout;
+if (montrader.includes("Livboj-arkivet")) {
+  console.log("Arkivbläddraren är öppen — kopplar från inför backupen.");
+  spawnSync("/sbin/umount", [path.join(homedir(), "Livboj-arkivet")]);
+  spawnSync("/usr/bin/pkill", ["-f", "restic mount"]);
+}
+
 try {
   // ---- 1. Exportörer (valfria, ligger i exportorer/*.mjs) ----
   framsteg({ fas: "exportorer" }, true);

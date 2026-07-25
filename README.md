@@ -40,6 +40,10 @@ eller leverantören byter villkor. Livboj bygger på tre idéer:
   verifieras är bara en förhoppning
 - **Livboj.app** i Program-mappen: återställ med några klick, se alla
   säkerhetskopior, kör backup nu, testa arkivet — ingen Terminal
+- **Bläddra i arkivet i Finder**: varje säkerhetskopia som en vanlig
+  daterad mapp, skrivskyddad — titta och tidsresa utan att återställa
+  (kräver [fuse-t](https://github.com/macos-fuse-t/fuse-t):
+  `brew tap macos-fuse-t/homebrew-cask && brew install fuse-t`)
 - **Påminnelser**: efter 7 dagar utan backup, och en kvartalsvis
   puff att göra en teståterställning
 - **Exportörer**: pluggbara skript som hämtar hem molndata (databaser,

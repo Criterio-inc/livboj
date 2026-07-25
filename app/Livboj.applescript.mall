@@ -32,13 +32,18 @@ on run
 		return
 	end try
 
-	set menyn to {"Återställ filer …", "Se alla säkerhetskopior", "Kör backup nu", "Testa arkivet", "Öppna backupdisken", "Öppna instruktionen (LÄS MIG FÖRST)"}
+	set menyn to {"Återställ filer …", "Bläddra i arkivet (Finder)", "Koppla från arkivbläddraren", "Se alla säkerhetskopior", "Kör backup nu", "Testa arkivet", "Öppna backupdisken", "Öppna instruktionen (LÄS MIG FÖRST)"}
 	set valet to choose from list menyn with prompt statusText & return & return & "Vad vill du göra?" default items {"Återställ filer …"} with title "Livboj"
 	if valet is false then return
 	set valet to item 1 of valet
 
 	if valet is "Återställ filer …" then
 		aterstall()
+	else if valet is "Bläddra i arkivet (Finder)" then
+		do shell script "nohup '{{ROT}}/scripts/bladdra.sh' oppna > /dev/null 2>&1 &"
+		display notification "Arkivet öppnas i Finder om en liten stund …" with title "Livboj"
+	else if valet is "Koppla från arkivbläddraren" then
+		do shell script "'{{ROT}}/scripts/bladdra.sh' stang"
 	else if valet is "Se alla säkerhetskopior" then
 		visaSnapshots()
 	else if valet is "Kör backup nu" then
