@@ -3,8 +3,9 @@
 # något. Monterar arkivet skrivskyddat via restic mount (kräver fuse-t:
 # brew tap macos-fuse-t/homebrew-cask && brew install fuse-t).
 #
-#   bladdra.sh oppna   — montera och öppna senaste snapshot i Finder
-#   bladdra.sh stang   — koppla från
+#   bladdra.sh oppna [undermapp]  — montera och öppna i Finder; undermapp
+#                                   är relativ senaste snapshot
+#   bladdra.sh stang              — koppla från
 #
 # Under mappen snapshots/ ligger varje säkerhetskopia som en egen daterad
 # mapp — tidsresa genom att öppna en äldre. Motorn kopplar själv från
@@ -38,8 +39,15 @@ if [ "${1:-oppna}" = "stang" ]; then
   exit 0
 fi
 
+UNDER="${2:-}"
+oppnaMal() {
+  MAL="$MONT/snapshots/latest"
+  [ -n "$UNDER" ] && [ -d "$MAL/$UNDER" ] && MAL="$MAL/$UNDER"
+  open "$MAL" 2>/dev/null || open "$MONT"
+}
+
 if monterad; then
-  open "$MONT/snapshots/latest" 2>/dev/null || open "$MONT"
+  oppnaMal
   exit 0
 fi
 if [ ! -d "$LIVBOJ_VOLYM" ]; then
@@ -61,7 +69,7 @@ for i in $(seq 1 30); do
 done
 if [ -d "$MONT/snapshots" ]; then
   notis "Arkivet är öppet som mapp — koppla från via appen när du är klar."
-  open "$MONT/snapshots/latest" 2>/dev/null || open "$MONT/snapshots"
+  oppnaMal
 else
   notis "Kunde inte öppna arkivet — loggen öppnas."
   open -e "$LOGG"

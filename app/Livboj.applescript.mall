@@ -40,8 +40,24 @@ on run
 	if valet is "Återställ filer …" then
 		aterstall()
 	else if valet is "Bläddra i arkivet (Finder)" then
-		do shell script "nohup '{{ROT}}/scripts/bladdra.sh' oppna > /dev/null 2>&1 &"
-		display notification "Arkivet öppnas i Finder om en liten stund …" with title "Livboj"
+		-- Samma mänskliga namn som i återställningen, genererade ur manifestet,
+		-- så att ingen behöver leta bland tekniska mappnamn.
+		set platsLista to {{VAL_LISTA}}
+		set platsInkl to {{INKL_LISTA}}
+		set plats to choose from list platsLista with prompt "Vad vill du titta på?" with title "Livboj — bläddra"
+		if plats is false then return
+		set plats to item 1 of plats
+		set undermapp to ""
+		repeat with i from 1 to count of platsLista
+			if item i of platsLista is plats then set undermapp to item i of platsInkl
+		end repeat
+		if undermapp is "ALLT" then
+			set undermapp to ""
+		else if undermapp begins with "/" then
+			set undermapp to text 2 thru -1 of undermapp
+		end if
+		do shell script "nohup '{{ROT}}/scripts/bladdra.sh' oppna " & quoted form of undermapp & " > /dev/null 2>&1 &"
+		display notification plats & " öppnas i Finder om en liten stund …" with title "Livboj"
 	else if valet is "Koppla från arkivbläddraren" then
 		do shell script "'{{ROT}}/scripts/bladdra.sh' stang"
 	else if valet is "Se alla säkerhetskopior" then
