@@ -28,7 +28,11 @@ eller leverantören byter villkor. Livboj bygger på tre idéer:
 ## Vad du får
 
 - Backup som **startar själv** när disken kopplas in (launchd), med
-  notis när den är klar
+  notis vid start och när den är klar — plus en daglig körning 09:30
+  för dig som låter disken sitta i
+- **Förlopp i realtid**: appen visar var körningen befinner sig
+  ("43 % klart, ca 5 min kvar") och senaste backup med datum och tid,
+  även när disken inte är inkopplad
 - **Versionshistorik** — gårdagens version finns kvar även om du
   råkade radera filen igår, med automatisk gallring
   (14 dagliga, 12 veckor, 24 månader, 10 år)

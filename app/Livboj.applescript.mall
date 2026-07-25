@@ -7,15 +7,33 @@ property volymen : "{{VOLYM}}"
 property resticKmd : "export RESTIC_REPOSITORY='{{ARKIV}}'; export RESTIC_PASSWORD_COMMAND='/usr/bin/security find-generic-password -s {{NYCKELRING}} -w'; '{{RESTIC}}' "
 
 on run
+	-- Statusraden: senaste backup med datum/tid, varningar och diskläge
+	try
+		set statusText to do shell script "'{{NODE}}' '{{ROT}}/scripts/status.mjs' 2>/dev/null"
+	on error
+		set statusText to "Kunde inte läsa backupstatusen."
+	end try
+
+	-- Pågår en backup? Visa förloppet med uppdateraknapp tills den är klar.
+	repeat while statusText contains "Backup pågår"
+		set knapp to button returned of (display dialog statusText buttons {"Stäng", "Uppdatera"} default button "Uppdatera" with title "Livboj — pågående backup")
+		if knapp is "Stäng" then return
+		try
+			set statusText to do shell script "'{{NODE}}' '{{ROT}}/scripts/status.mjs' 2>/dev/null"
+		on error
+			set statusText to "Kunde inte läsa backupstatusen."
+		end try
+	end repeat
+
 	try
 		do shell script "test -d " & quoted form of volymen
 	on error
-		display dialog "Koppla in backupdisken (" & volymen & ") först och försök igen." buttons {"OK"} default button "OK" with icon caution with title "Livboj"
+		display dialog statusText buttons {"OK"} default button "OK" with title "Livboj — status"
 		return
 	end try
 
 	set menyn to {"Återställ filer …", "Se alla säkerhetskopior", "Kör backup nu", "Testa arkivet", "Öppna backupdisken", "Öppna instruktionen (LÄS MIG FÖRST)"}
-	set valet to choose from list menyn with prompt "Vad vill du göra?" default items {"Återställ filer …"} with title "Livboj"
+	set valet to choose from list menyn with prompt statusText & return & return & "Vad vill du göra?" default items {"Återställ filer …"} with title "Livboj"
 	if valet is false then return
 	set valet to item 1 of valet
 

@@ -12,6 +12,7 @@
   "scripts": {
     "init": "node scripts/init.mjs",
     "backup": "node scripts/livboj.mjs --force",
+    "status": "node scripts/status.mjs",
     "test-arkivet": "node scripts/testaterstallning.mjs",
     "bygg-app": "node scripts/bygg-app.mjs"
   }

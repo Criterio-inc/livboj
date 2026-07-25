@@ -8,8 +8,9 @@
 //
 // Målet är inte backup utan ÅTERSTÄLLNING: se LÄS-MIG-FÖRST.md på disken.
 
-import { spawnSync } from "node:child_process";
-import { mkdir, readdir, readFile, writeFile, stat, rm } from "node:fs/promises";
+import { spawn, spawnSync } from "node:child_process";
+import { access, mkdir, readdir, readFile, writeFile, stat, rm, rename } from "node:fs/promises";
+import { constants as fsConst, writeFileSync, renameSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -45,20 +46,99 @@ function notis(rubrik, text) {
   ]);
 }
 
-function restic(args, tillatnaKoder = [0]) {
+// Förloppsfilen läses av status.mjs och appen ("Backup pågår — 34 %").
+// Tvingade fasbyten skrivs SYNKRONT: de följs ofta av ett blockerande
+// spawnSync-anrop som stoppar eventloopen, och en asynkron skrivning
+// skulle då aldrig hinna köra förrän fasen är över. Strömuppdateringar
+// skrivs seriellt och atomiskt (tempfil + rename), och ett sekvensnummer
+// hindrar en omsprungen köad skrivning från att skriva över färskare info.
+const FRAMSTEG_FIL = path.join(STATUS_MAPP, "framsteg.json");
+let framstegSkrivet = 0;
+let framstegSekvens = 0;
+let framstegKedja = Promise.resolve();
+function framsteg(data, tvinga = false) {
+  if (!tvinga && Date.now() - framstegSkrivet < 2000) return;
+  framstegSkrivet = Date.now();
+  const sekvens = ++framstegSekvens;
+  const innehall = JSON.stringify({ ...data, uppdaterad: new Date().toISOString() });
+  if (tvinga) {
+    try {
+      writeFileSync(FRAMSTEG_FIL + ".tmp", innehall);
+      renameSync(FRAMSTEG_FIL + ".tmp", FRAMSTEG_FIL);
+    } catch { /* förloppet är hjälpinfo, aldrig stoppande */ }
+    return;
+  }
+  framstegKedja = framstegKedja
+    .then(async () => {
+      if (sekvens !== framstegSekvens) return;
+      await writeFile(FRAMSTEG_FIL + ".tmp", innehall);
+      await rename(FRAMSTEG_FIL + ".tmp", FRAMSTEG_FIL);
+    })
+    .catch(() => {});
+}
+
+function resticEnv() {
+  return {
+    ...process.env,
+    RESTIC_REPOSITORY: REPO,
+    RESTIC_PASSWORD_COMMAND: `/usr/bin/security find-generic-password -s ${konfig.nyckelring ?? "livboj-restic"} -w`,
+  };
+}
+
+function restic(args, tillatnaKoder = [0], harForsokt = false) {
   const res = spawnSync(RESTIC, args, {
-    env: {
-      ...process.env,
-      RESTIC_REPOSITORY: REPO,
-      RESTIC_PASSWORD_COMMAND: `/usr/bin/security find-generic-password -s ${konfig.nyckelring ?? "livboj-restic"} -w`,
-    },
+    env: resticEnv(),
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
   });
   if (!tillatnaKoder.includes(res.status)) {
-    throw new Error(`restic ${args[0]} misslyckades:\n${res.stderr || res.stdout}`);
+    const fel = res.stderr || res.stdout;
+    // Kvarglömt lås efter en död process (avbruten körning, strömavbrott):
+    // om ingen annan restic kör på maskinen är det säkert att låsa upp och
+    // försöka en gång till.
+    const arLas = String(fel).includes("already locked");
+    const annanKor = spawnSync("/usr/bin/pgrep", ["-x", "restic"]).status === 0;
+    if (arLas && !annanKor && !harForsokt && args[0] !== "unlock") {
+      console.log(`  kvarglömt lås upptäckt (${args[0]}) — låser upp och försöker igen …`);
+      restic(["unlock"], [0], true);
+      return restic(args, tillatnaKoder, true);
+    }
+    throw new Error(`restic ${args[0]} misslyckades:\n${fel}`);
   }
   return { ut: res.stdout, kod: res.status };
+}
+
+// Strömmande restic-backup: JSON-raderna tolkas medan de kommer, så att
+// procent och tid kvar kan visas i appen under körningens gång.
+function resticBackupStrom(args) {
+  return new Promise((losa) => {
+    const p = spawn(RESTIC, args, { env: resticEnv() });
+    const jsonRader = [];
+    let rest = "", stderr = "";
+    p.stdout.on("data", (bit) => {
+      rest += bit;
+      let i;
+      while ((i = rest.indexOf("\n")) >= 0) {
+        const rad = rest.slice(0, i);
+        rest = rest.slice(i + 1);
+        try {
+          const r = JSON.parse(rad);
+          jsonRader.push(r);
+          if (r.message_type === "status") {
+            framsteg({
+              fas: "restic",
+              procent: Math.round((r.percent_done ?? 0) * 100),
+              sekunderKvar: r.seconds_remaining ?? null,
+              gbKlart: Number((r.bytes_done / 1e9).toFixed(1)),
+              gbTotalt: r.total_bytes ? Number((r.total_bytes / 1e9).toFixed(1)) : null,
+            });
+          }
+        } catch { /* icke-JSON-rad */ }
+      }
+    });
+    p.stderr.on("data", (bit) => { stderr += bit; });
+    p.on("close", (kod) => losa({ kod, jsonRader, stderr }));
+  });
 }
 
 async function lasStatus() {
@@ -98,6 +178,23 @@ try {
   process.exit(0);
 }
 
+// En nyss inkopplad disk kan synas utan att vara skrivklar (ger EACCES).
+// Ge den upp till 40 sekunder att vakna innan vi ger upp.
+for (let forsok = 1; ; forsok++) {
+  try {
+    await access(VOLYM, fsConst.W_OK);
+    break;
+  } catch {
+    if (forsok === 4) {
+      console.error("FEL: disken är inkopplad men inte skrivbar ännu.");
+      notis("Livboj väntar", "Disken svarar inte ännu — ny start vid nästa trigger.");
+      process.exit(1);
+    }
+    console.log(`Disken är inte skrivklar (försök ${forsok}) — väntar 10 s …`);
+    await new Promise((v) => setTimeout(v, 10_000));
+  }
+}
+
 await mkdir(STATUS_MAPP, { recursive: true });
 
 // Livboj-appen lägger en "kör nu"-flagga och sparkar igång launchd-jobbet —
@@ -119,9 +216,12 @@ if (!force && !korNu && status.senasteLyckade) {
 
 console.log(`\n=== Livboj ${new Date().toLocaleString("sv-SE")} ===`);
 const varningar = [];
+notis("Backup startad …", "Följ förloppet i Livboj-appen.");
+framsteg({ fas: "start" }, true);
 
 try {
   // ---- 1. Exportörer (valfria, ligger i exportorer/*.mjs) ----
+  framsteg({ fas: "exportorer" }, true);
   const exportMapp = path.join(ROT, "exportorer");
   let exportFiler = [];
   try {
@@ -195,22 +295,41 @@ try {
   console.log(`Kör restic-backup av ${vagar.length} sökvägar …`);
   const listFil = path.join(tmpdir(), `livboj-${process.pid}.txt`);
   await writeFile(listFil, vagar.join("\n") + "\n");
-  // Exit-kod 3 = snapshot skapad men vissa filer gick inte att läsa.
-  const { ut: backupUt, kod: backupKod } = restic([
+  // Exit-kod 3 = snapshot skapad men vissa filer gick inte att läsas.
+  // Strömmande körning så att förloppet syns i appen medan det pågår.
+  const backupArgs = [
     "backup",
     "--files-from", listFil,
     "--exclude", ".DS_Store",
     "--exclude", "node_modules",
     "--exclude", "*.icloud",
+    // Expo Go:s iCloud-container: utvecklarcache som dessutom ger
+    // "resource deadlock avoided" vid läsning (FileProvider-egenhet).
+    "--exclude", "iCloud~host~exp~Exponent",
     "--tag", "livboj",
     "--json",
-  ], [0, 3]);
-  if (backupKod === 3) {
-    varningar.push("vissa filer kunde inte läsas — är Full skivåtkomst givet till node och restic?");
+  ];
+  framsteg({ fas: "restic", procent: 0 }, true);
+  let strom = await resticBackupStrom(backupArgs);
+  // Kvarglömt lås efter en död process? Självläk och försök igen.
+  if (strom.kod !== 0 && strom.kod !== 3
+      && String(strom.stderr).includes("already locked")
+      && spawnSync("/usr/bin/pgrep", ["-x", "restic"]).status !== 0) {
+    console.log("  kvarglömt lås upptäckt — låser upp och försöker igen …");
+    restic(["unlock"]);
+    strom = await resticBackupStrom(backupArgs);
   }
-  const sammanfattning = backupUt
-    .trim().split("\n")
-    .map((rad) => { try { return JSON.parse(rad); } catch { return null; } })
+  if (strom.kod !== 0 && strom.kod !== 3) {
+    throw new Error(`restic backup misslyckades:\n${strom.stderr}`);
+  }
+  if (strom.kod === 3) {
+    // restic skriver läsfelen på stderr, inte i JSON-strömmen
+    const felRader = strom.stderr.split("\n").filter((r) => r.trim());
+    varningar.push(`${felRader.length || "vissa"} filer kunde inte läsas — detaljer i loggen`);
+    for (const r of felRader.slice(0, 8)) console.log(`  ⚠ ${r}`);
+    if (felRader.length > 8) console.log(`  … och ${felRader.length - 8} rader till`);
+  }
+  const sammanfattning = strom.jsonRader
     .filter((r) => r?.message_type === "summary")
     .at(-1);
   const gb = ((sammanfattning?.total_bytes_processed ?? 0) / 1e9).toFixed(1);
@@ -221,6 +340,7 @@ try {
 
   // ---- 4. Gallring (prunea på söndagar) ----
   console.log("Gallrar gamla snapshots …");
+  framsteg({ fas: "gallring" }, true);
   const gallring = [
     "forget", "--tag", "livboj",
     "--keep-daily", String(GALLRING.daily),
@@ -233,6 +353,7 @@ try {
 
   // ---- 5. Integritetskontroll ----
   console.log("Kontrollerar arkivets integritet (restic check) …");
+  framsteg({ fas: "kontroll" }, true);
   restic(["check", `--read-data-subset=${konfig.lasKontroll ?? "2%"}`]);
 
   // ---- 6. Kvitto ----
@@ -261,7 +382,11 @@ try {
     for (const v of varningar) console.log(`  ⚠ ${v}`);
   }
   console.log("KLART.");
+  await framstegKedja; // låt sista skrivningen landa innan filen tas bort
+  await rm(FRAMSTEG_FIL, { force: true });
 } catch (fel) {
+  await framstegKedja;
+  await rm(FRAMSTEG_FIL, { force: true });
   console.error(`FEL: ${fel.message}`);
   notis("Livboj: backup MISSLYCKADES ✗", String(fel.message).slice(0, 200));
   process.exit(1);

@@ -10,3 +10,4 @@ app/Livboj.applescript
 .DS_Store
 *.log
 node_modules/
+.obsidian/

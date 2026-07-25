@@ -220,6 +220,13 @@ await writeFile(path.join(agentMapp, "livboj.backup-disk.plist"), plist("livboj.
 \t<array>
 \t\t<string>${VOLYM}</string>
 \t</array>
+\t<key>StartCalendarInterval</key>
+\t<dict>
+\t\t<key>Hour</key>
+\t\t<integer>9</integer>
+\t\t<key>Minute</key>
+\t\t<integer>30</integer>
+\t</dict>
 \t<key>RunAtLoad</key>
 \t<false/>`));
 await writeFile(path.join(agentMapp, "livboj.paminnelse.plist"), plist("livboj.paminnelse", `\t<key>ProgramArguments</key>
