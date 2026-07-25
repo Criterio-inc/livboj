@@ -14,12 +14,28 @@ med programmet restic. Det innehåller de mappar och filer som diskens
 ägare valt att skydda: dokument, bilder, databaser och annat som bara
 fanns på datorn.
 
-## Återställa
+## Appen Livboj — vad menyvalen betyder
 
-**På ägarens egen Mac är det enklast så här:** öppna appen **Livboj**
-i Program-mappen och välj "Återställ filer". Den frågar vad du vill
-hämta och lägger allt i en ny mapp i hemkatalogen, utan att skriva
-över något.
+På ägarens Mac finns appen **Livboj** i Program-mappen. Den visar
+överst när den senaste backupen gjordes, och pågår en backup ser du
+förloppet i procent. Menyn:
+
+- **Återställ filer …** — hämta tillbaka något ur arkivet: välj
+  tidpunkt och vad, allt läggs i en ny mapp "Återställt (datum)" i
+  hemmappen, ingenting skrivs över.
+- **Bläddra i arkivet (Finder)** — titta i arkivet utan att
+  återställa: välj vad du vill se så öppnas mappen skrivskyddad i
+  Finder. Under `snapshots` ligger varje säkerhetskopia som en egen
+  daterad mapp. Dra ut en fil för att kopiera den.
+- **Koppla från arkivbläddraren** — stänger mappen ovan.
+- **Se alla säkerhetskopior** — lista över alla tidpunkter med datum.
+- **Kör backup nu** — startar en backup direkt.
+- **Testa arkivet** — återställer en slumpad fil och kontrollerar att
+  den är identisk med originalet; görs kvartalsvis, datorn påminner.
+- **Öppna backupdisken** — öppnar disken i Finder.
+- **Öppna instruktionen** — den här texten.
+
+## Återställa på en annan dator
 
 På en annan dator behöver du två saker: programmet **restic** (gratis,
 öppen källkod, finns på restic.net eller via `brew install restic`)
